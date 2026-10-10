@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>YOMB Hitting Stats</title>
+<style>
+:root{--bg:#f6f7f4;--card:#fff;--ink:#1c2420;--mute:#66706a;--line:#dfe3dd;--accent:#1f6b4a;--hi:#e8f2ec;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121715;--card:#1a211e;--ink:#e9eeea;--mute:#98a39c;--line:#2b3430;--accent:#58c48f;--hi:#1f2d26}}
+:root[data-theme="dark"]{--bg:#121715;--card:#1a211e;--ink:#e9eeea;--mute:#98a39c;--line:#2b3430;--accent:#58c48f;--hi:#1f2d26}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{padding:16px 14px 8px}
+h1{margin:0;font-size:22px;letter-spacing:-.01em}
+.sub{color:var(--mute);font-size:13px;margin-top:2px}
+.controls{display:flex;flex-wrap:wrap;gap:8px;padding:6px 14px 10px}
+input[type=search],select,.num{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:9px 10px;min-height:40px}
+input[type=search]{flex:1 1 100%}
+select{flex:1 1 140px}
+label.chk{display:flex;align-items:center;gap:6px;color:var(--mute);font-size:13px;min-height:40px}
+.wrap{margin:0 8px;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow-x:auto;max-height:calc(100vh - 210px);overflow-y:auto}
+table{border-collapse:separate;border-spacing:0;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:9px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
+th{position:sticky;top:0;background:var(--card);font-weight:600;font-size:13px;color:var(--mute);cursor:pointer;user-select:none;z-index:2}
+th.on{color:var(--accent)}
+th:first-child,td:first-child{position:sticky;left:0;text-align:left;background:var(--card);z-index:1;min-width:128px}
+th:first-child{z-index:3}
+td.on{background:var(--hi);font-weight:600}
+td button{all:unset;cursor:pointer;color:var(--ink);font-weight:500}
+td button:focus-visible,th:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+td .rk{color:var(--mute);font-size:12px;margin-right:6px;display:inline-block;min-width:16px}
+.empty{padding:28px;text-align:center;color:var(--mute)}
+.note{color:var(--mute);font-size:12px;padding:8px 14px 18px}
+#sheet{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center;z-index:10}
+#sheet.open{display:flex}
+.panel{background:var(--card);width:100%;max-width:720px;border-radius:14px 14px 0 0;padding:14px 12px calc(14px + env(safe-area-inset-bottom,0px));max-height:80%;overflow:auto}
+.panel h2{margin:0 0 2px;font-size:18px}
+.panel .x{float:right;font:inherit;background:none;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:6px 10px}
+.panel table th{position:static;cursor:default}
+.panel tr.career td{font-weight:700;background:var(--hi)}
+</style>
+</head>
+<body>
+<header>
+  <h1>YOMB Hitting Stats</h1>
+  <div class="sub" id="sub"></div>
+</header>
+<div class="controls">
+  <input type="search" id="q" placeholder="Search players" aria-label="Search players" autocomplete="off">
+  <select id="season" aria-label="Season"></select>
+  <select id="team" aria-label="Team" hidden></select>
+  <label class="chk"><input type="checkbox" id="qual" checked> <span id="qlabel">Qualified only</span></label>
+</div>
+<div class="wrap"><table id="tbl"></table><div class="empty" id="empty" hidden>No players match.</div></div>
+<div class="note">Tap a column to sort. Tap a player for season-by-season stats. Rates are recalculated from combined totals.</div>
+<div id="sheet" role="dialog" aria-modal="true"><div class="panel" id="panel"></div></div>
+<script>
+let DATA=[];
+let GAMES={};
+const SUM=['GP','PA','AB','H','1B','2B','3B','HR','RBI','R','BB','SO','HBP','SAC','SF','ROE','FC','SB','CS','QAB','XBH','TB'];
+const COLS=['AVG','OBP','SLG','OPS','GP','PA','AB','H','2B','3B','HR','RBI','R','BB','SO','SB','QAB','TB'];
+const RATE=new Set(['AVG','OBP','SLG','OPS']);
+const QUAL_PER_GAME=1.5;
+const TERM={Winter:0,Spring:1,Summer:2,Fall:3};
+const sKey=s=>{const [t,y]=s.split(' ');return +y*10+TERM[t]};
+let seasons=[];
+let teams=[];
+const st={season:'all',team:'all',q:'',qual:true,key:'AVG',dir:-1};
+const $=id=>document.getElementById(id);
+const safe=(fn,d)=>{try{return fn()}catch(e){return d}};
+
+function derive(o){
+  const ab=o.AB,d=ab+o.BB+o.HBP+o.SF;
+  o.AVG=ab?o.H/ab:null; o.SLG=ab?o.TB/ab:null;
+  o.OBP=d?(o.H+o.BB+o.HBP)/d:null;
+  o.OPS=(o.OBP!=null&&o.SLG!=null)?o.OBP+o.SLG:null;
+  return o;
+}
+const fmt=(k,v)=>v==null?'–':RATE.has(k)?(v>=1?v.toFixed(3):v.toFixed(3).replace(/^0/,'')):v;
+
+function scope(){
+  return DATA.filter(r=>(st.season==='all'||r.s===st.season||(st.season.startsWith('term:')&&r.s.startsWith(st.season.slice(5)+' ')))&&(st.team==='all'||r.t===st.team));
+}
+function build(){
+  const rows=scope(),by={},tg=new Set();
+  rows.forEach(r=>{
+    tg.add(r.t+'|'+r.s);
+    const o=by[r.n]||(by[r.n]=Object.fromEntries([['n',r.n],...SUM.map(k=>[k,0])]));
+    SUM.forEach(k=>o[k]+=r[k]);
+  });
+  const games=[...tg].reduce((a,k)=>a+(GAMES[k]||0),0);
+  return {list:Object.values(by).map(derive),games,tgN:new Set(rows.map(r=>r.s)).size};
+}
+function render(){
+  const {list,games,tgN}=build();
+  const minPA=Math.ceil(QUAL_PER_GAME*games);
+  $('qlabel').textContent=st.qual?`Qualified only (${minPA}+ PA)`:'Qualified only';
+  const q=st.q.trim().toLowerCase();
+  let rows=list.filter(o=>(!st.qual||o.PA>=minPA)&&(!q||o.n.toLowerCase().includes(q)));
+  const k=st.key;
+  rows.sort((a,b)=>{
+    if(k==='n')return st.dir*-1*a.n.localeCompare(b.n);
+    const x=a[k]==null?-1:a[k],y=b[k]==null?-1:b[k];
+    return (x-y)*st.dir||a.n.localeCompare(b.n);
+  });
+  $('sub').textContent=`${rows.length} players · ${tgN} season${tgN===1?'':'s'} · ${games} team games`;
+  const arrow=c=>st[ 'key']===c?(st.dir<0?' ▾':' ▴'):'';
+  let h='<thead><tr><th data-k="n" class="'+(k==='n'?'on':'')+'" tabindex="0">Player'+arrow('n')+'</th>'+COLS.map(c=>`<th data-k="${c}" class="${k===c?'on':''}" tabindex="0">${c}${arrow(c)}</th>`).join('')+'</tr></thead><tbody>';
+  rows.forEach((o,i)=>{
+    h+=`<tr><td><span class="rk">${i+1}</span><button data-p="${o.n.replace(/"/g,'&quot;')}">${o.n}</button></td>`+COLS.map(c=>`<td class="${k===c?'on':''}">${fmt(c,o[c])}</td>`).join('')+'</tr>';
+  });
+  $('tbl').innerHTML=h+'</tbody>';
+  $('empty').hidden=rows.length>0;
+}
+function sheet(name){
+  const rs=DATA.filter(r=>r.n===name).sort((a,b)=>sKey(a.s)-sKey(b.s));
+  const tot=Object.fromEntries(SUM.map(k=>[k,rs.reduce((a,r)=>a+r[k],0)]));derive(tot);
+  const cols=['GP','PA','AVG','OBP','SLG','OPS','H','HR','RBI','R'];
+  const line=(lab,o,cls)=>`<tr class="${cls||''}"><td>${lab}</td>`+cols.map(c=>`<td>${fmt(c,o[c])}</td>`).join('')+'</tr>';
+  $('panel').innerHTML=`<button class="x" id="close">Close</button><h2>${name}</h2><div class="sub">${rs.length} season${rs.length>1?'s':''} on record</div><div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>Season</th>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${rs.map(r=>line(r.s,derive({...r}))).join('')}${rs.length>1?line('Career',tot,'career'):''}</tbody></table></div>`;
+  $('sheet').classList.add('open');$('close').focus();
+}
+function init(){
+seasons=[...new Set(DATA.map(r=>r.s))].sort((a,b)=>sKey(b)-sKey(a));teams=[...new Set(DATA.map(r=>r.t))].sort();
+const terms=[...new Set(seasons.map(s=>s.split(' ')[0]))].sort((a,b)=>TERM[a]-TERM[b]);
+$('season').innerHTML='<option value="all">All seasons (career)</option>'+terms.map(t=>`<option value="term:${t}">${t} only (all years)</option>`).join('')+seasons.map(s=>`<option>${s}</option>`).join('');
+if(teams.length>1){$('team').hidden=false;$('team').innerHTML='<option value="all">All teams</option>'+teams.map(t=>`<option>${t}</option>`).join('');}
+$('season').onchange=e=>{st.season=e.target.value;render()};
+$('team').onchange=e=>{st.team=e.target.value;render()};
+$('q').oninput=e=>{st.q=e.target.value;render()};
+$('qual').onchange=e=>{st.qual=e.target.checked;render()};
+$('tbl').addEventListener('click',e=>{
+  const th=e.target.closest('th');
+  if(th){const k=th.dataset.k;if(st.key===k)st.dir*=-1;else{st.key=k;st.dir=k==='n'?1:-1}render();return}
+  const b=e.target.closest('button[data-p]');if(b)sheet(b.dataset.p);
+});
+$('tbl').addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.tagName==='TH')e.target.click()});
+$('sheet').addEventListener('click',e=>{if(e.target.id==='sheet'||e.target.id==='close')$('sheet').classList.remove('open')});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('sheet').classList.remove('open')});
+render();}
+fetch('data.json',{cache:'no-cache'}).then(r=>r.json()).then(j=>{DATA=j.rows;GAMES=j.games;init()}).catch(()=>{$('sub').textContent='Could not load stats data.'});
+</script>
+</body>
+</html>
