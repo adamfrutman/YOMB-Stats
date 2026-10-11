@@ -2,7 +2,9 @@
 import csv, re, json, glob, os
 KEEP=['GP','PA','AB','H','1B','2B','3B','HR','RBI','R','BB','SO','HBP','SAC','SF','ROE','FC','SB','CS','QAB','XBH','TB']
 rows_out=[]; games={}
-for f in sorted(glob.glob('data/*.csv')):
+files=sorted(glob.glob('**/*.csv',recursive=True))
+print('CSV files found:',files)
+for f in files:
     m=re.match(r'(.+?)_(Spring|Summer|Fall|Winter)_(\d{4})',os.path.basename(f))
     if not m: print('SKIPPED (name should look like YOMB_Fall_2025_Stats.csv):',f); continue
     team,season=m.group(1),f"{m.group(2)} {m.group(3)}"
@@ -18,5 +20,7 @@ for f in sorted(glob.glob('data/*.csv')):
             rows_out.append(o)
     except Exception as e:
         print('SKIPPED (could not read):',f,e)
+if not rows_out:
+    raise SystemExit('ERROR: no player rows found - leaving data.json unchanged')
 json.dump({'rows':rows_out,'games':games},open('data.json','w'),separators=(',',':'))
 print(len(rows_out),'player rows from',len(games),'team-seasons')
