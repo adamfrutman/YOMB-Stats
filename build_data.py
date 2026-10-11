@@ -7,9 +7,9 @@ print('ALL FILES IN REPO:',sorted(allfiles))
 files=sorted(p[2:] for p in allfiles if p.lower().endswith('.csv'))
 print('CSV files found:',files)
 for f in files:
-    m=re.match(r'(.+?)_(Spring|Summer|Fall|Winter)_(\d{4})',os.path.basename(f))
-    if not m: print('SKIPPED (name should look like YOMB_Fall_2025_Stats.csv):',f); continue
-    team,season=m.group(1),f"{m.group(2)} {m.group(3)}"
+    m=re.match(r'(.+?)[ _-]+(Spring|Summer|Fall|Winter)[ _-]+(\d{4})',os.path.basename(f),re.I)
+    if not m: print('SKIPPED (name should look like YOMB Fall 2025 Stats.csv):',f); continue
+    team,season=m.group(1).strip(),f"{m.group(2).capitalize()} {m.group(3)}"
     try:
         rows=list(csv.reader(open(f,encoding='utf-8-sig')))
         h=rows[1][:rows[1].index('IP')]
