@@ -2,7 +2,9 @@
 import csv, re, json, glob, os
 KEEP=['GP','PA','AB','H','1B','2B','3B','HR','RBI','R','BB','SO','HBP','SAC','SF','ROE','FC','SB','CS','QAB','XBH','TB']
 rows_out=[]; games={}
-files=sorted(glob.glob('**/*.csv',recursive=True))
+allfiles=[os.path.join(d,n) for d,_,ns in os.walk('.') if '.git' not in d.split(os.sep) for n in ns]
+print('ALL FILES IN REPO:',sorted(allfiles))
+files=sorted(p[2:] for p in allfiles if p.lower().endswith('.csv'))
 print('CSV files found:',files)
 for f in files:
     m=re.match(r'(.+?)_(Spring|Summer|Fall|Winter)_(\d{4})',os.path.basename(f))
