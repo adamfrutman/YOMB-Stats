@@ -19,7 +19,13 @@ input[type=search],select,.num{font:inherit;color:var(--ink);background:var(--ca
 input[type=search]{flex:1 1 100%}
 select{flex:1 1 140px}
 label.chk{display:flex;align-items:center;gap:6px;color:var(--mute);font-size:13px;min-height:40px}
-.wrap{margin:0 8px;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow-x:auto;max-height:calc(100vh - 210px);overflow-y:auto}
+.leaders{display:flex;gap:8px;overflow-x:auto;padding:0 14px 10px}
+.ch{flex:0 0 auto;min-width:96px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:12px;cursor:pointer}
+.ch b{color:var(--mute);font-weight:600}
+.ch .v{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+.ch .nm{color:var(--mute);white-space:nowrap}
+.star{color:#d9a21b}
+.wrap{margin:0 8px;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow-x:auto;max-height:calc(100vh - 290px);overflow-y:auto}
 table{border-collapse:separate;border-spacing:0;width:100%;font-variant-numeric:tabular-nums}
 th,td{padding:9px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
 th{position:sticky;top:0;background:var(--card);font-weight:600;font-size:13px;color:var(--mute);cursor:pointer;user-select:none;z-index:2}
@@ -52,6 +58,7 @@ td .rk{color:var(--mute);font-size:12px;margin-right:6px;display:inline-block;mi
   <select id="team" aria-label="Team" hidden></select>
   <label class="chk">Min PA <input type="number" id="minpa" class="num" inputmode="numeric" min="0" value="20" style="width:80px"></label>
 </div>
+<div class="leaders" id="leaders" aria-label="Category leaders"></div>
 <div class="wrap"><table id="tbl"></table><div class="empty" id="empty" hidden>No players match.</div></div>
 <div class="note">Tap a column to sort. Tap a player for season-by-season stats. Rates are recalculated from combined totals.</div>
 <div id="sheet" role="dialog" aria-modal="true"><div class="panel" id="panel"></div></div>
@@ -59,7 +66,8 @@ td .rk{color:var(--mute);font-size:12px;margin-right:6px;display:inline-block;mi
 let DATA=[];
 let GAMES={};
 const SUM=['GP','PA','AB','H','1B','2B','3B','HR','RBI','R','BB','SO','HBP','SAC','SF','ROE','FC','SB','CS','QAB','XBH','TB'];
-const COLS=['AVG','OBP','SLG','OPS','GP','PA','AB','H','2B','3B','HR','RBI','R','BB','SO','SB','QAB','TB'];
+const COLS=['SZN','AVG','OBP','SLG','OPS','GP','PA','AB','H','2B','3B','HR','RBI','R','BB','SO','SB','QAB','TB'];
+const LEAD=['AVG','OBP','SLG','OPS','GP','PA','AB','H','2B','3B','HR','RBI','R','BB','SB','QAB','TB'];
 const RATE=new Set(['AVG','OBP','SLG','OPS']);
 const TERM={Winter:0,Spring:1,Summer:2,Fall:3};
 const sKey=s=>{const [t,y]=s.split(' ');return +y*10+TERM[t]};
@@ -82,19 +90,29 @@ function scope(){
   return DATA.filter(r=>(st.season==='all'||r.s===st.season||(st.season.startsWith('term:')&&r.s.startsWith(st.season.slice(5)+' ')))&&(st.team==='all'||r.t===st.team));
 }
 function build(){
-  const rows=scope(),by={},tg=new Set();
+  const rows=scope(),by={},tg=new Set(),ss={};
   rows.forEach(r=>{
     tg.add(r.t+'|'+r.s);
+    (ss[r.n]||(ss[r.n]=new Set())).add(r.s);
     const o=by[r.n]||(by[r.n]=Object.fromEntries([['n',r.n],...SUM.map(k=>[k,0])]));
     SUM.forEach(k=>o[k]+=r[k]);
   });
   const games=[...tg].reduce((a,k)=>a+(GAMES[k]||0),0);
-  return {list:Object.values(by).map(derive),games,tgN:new Set(rows.map(r=>r.s)).size};
+  return {list:Object.values(by).map(o=>{o.SZN=ss[o.n].size;return derive(o)}),games,tgN:new Set(rows.map(r=>r.s)).size};
 }
 function render(){
   const {list,games,tgN}=build();
   const q=st.q.trim().toLowerCase();
-  let rows=list.filter(o=>o.PA>=st.minPA&&(!q||o.n.toLowerCase().includes(q)));
+  const pool=list.filter(o=>o.PA>=st.minPA);
+  const lead={};
+  LEAD.forEach(c=>{
+    const key=o=>o[c]==null?null:RATE.has(c)?Math.round(o[c]*1000):o[c];
+    const vals=pool.map(key).filter(v=>v!=null);
+    const max=vals.length?Math.max(...vals):0;
+    if(max>0)lead[c]={max,names:pool.filter(o=>key(o)===max).map(o=>o.n),v:fmt(c,pool.find(o=>key(o)===max)[c])};
+  });
+  $('leaders').innerHTML=LEAD.filter(c=>lead[c]).map(c=>{const l=lead[c];return `<div class="ch" data-c="${c}"><b>${c}</b> <span class="star">★</span><div class="v">${l.v}</div><div class="nm">${l.names[0]}${l.names.length>1?' +'+(l.names.length-1):''}</div></div>`}).join('');
+  let rows=pool.filter(o=>!q||o.n.toLowerCase().includes(q));
   const k=st.key;
   rows.sort((a,b)=>{
     if(k==='n')return st.dir*-1*a.n.localeCompare(b.n);
@@ -105,7 +123,7 @@ function render(){
   const arrow=c=>st[ 'key']===c?(st.dir<0?' ▾':' ▴'):'';
   let h='<thead><tr><th data-k="n" class="'+(k==='n'?'on':'')+'" tabindex="0">Player'+arrow('n')+'</th>'+COLS.map(c=>`<th data-k="${c}" class="${k===c?'on':''}" tabindex="0">${c}${arrow(c)}</th>`).join('')+'</tr></thead><tbody>';
   rows.forEach((o,i)=>{
-    h+=`<tr><td><span class="rk">${i+1}</span><button data-p="${o.n.replace(/"/g,'&quot;')}">${o.n}</button></td>`+COLS.map(c=>`<td class="${k===c?'on':''}">${fmt(c,o[c])}</td>`).join('')+'</tr>';
+    h+=`<tr><td><span class="rk">${i+1}</span><button data-p="${o.n.replace(/"/g,'&quot;')}">${o.n}</button></td>`+COLS.map(c=>{const L=lead[c];const star=L&&L.names.includes(o.n)?' <span class="star">★</span>':'';return `<td class="${k===c?'on':''}">${fmt(c,o[c])}${star}</td>`}).join('')+'</tr>';
   });
   $('tbl').innerHTML=h+'</tbody>';
   $('empty').hidden=rows.length>0;
@@ -133,6 +151,7 @@ $('tbl').addEventListener('click',e=>{
   const b=e.target.closest('button[data-p]');if(b)sheet(b.dataset.p);
 });
 $('tbl').addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.tagName==='TH')e.target.click()});
+$('leaders').addEventListener('click',e=>{const c=e.target.closest('[data-c]');if(c){st.key=c.dataset.c;st.dir=-1;render()}});
 $('sheet').addEventListener('click',e=>{if(e.target.id==='sheet'||e.target.id==='close')$('sheet').classList.remove('open')});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('sheet').classList.remove('open')});
 render();}
