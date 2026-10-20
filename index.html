@@ -56,7 +56,7 @@ td .rk{color:var(--mute);font-size:12px;margin-right:6px;display:inline-block;mi
   <input type="search" id="q" placeholder="Search players" aria-label="Search players" autocomplete="off">
   <select id="season" aria-label="Season"></select>
   <select id="team" aria-label="Team" hidden></select>
-  <label class="chk">Min PA <input type="number" id="minpa" class="num" inputmode="numeric" min="0" value="20" style="width:80px"></label>
+  <label class="chk">Min PA <input type="number" id="minpa" class="num" inputmode="numeric" min="0" value="25" style="width:80px"></label>
 </div>
 <div class="leaders" id="leaders" aria-label="Category leaders"></div>
 <div class="wrap"><table id="tbl"></table><div class="empty" id="empty" hidden>No players match.</div></div>
@@ -73,7 +73,7 @@ const TERM={Winter:0,Spring:1,Summer:2,Fall:3};
 const sKey=s=>{const [t,y]=s.split(' ');return +y*10+TERM[t]};
 let seasons=[];
 let teams=[];
-const st={season:'all',team:'all',q:'',minPA:20,key:'AVG',dir:-1};
+const st={season:'all',team:'all',q:'',minPA:25,key:'AVG',dir:-1};
 const $=id=>document.getElementById(id);
 const safe=(fn,d)=>{try{return fn()}catch(e){return d}};
 
